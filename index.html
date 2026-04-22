@@ -795,6 +795,137 @@ function todayStr(){ return TODAY.toISOString().slice(0,10); }
 function uid(){ return Date.now() + Math.floor(Math.random()*9999); }
 
 // ══════════════════════════════════════════════════════════
+//  PIN SYSTEM
+// ══════════════════════════════════════════════════════════
+let pinState = { unlocked:false, entry:'', mode:'verify', newPin:'', onSuccess:null };
+
+function getStoredPin(){ return localStorage.getItem(PIN_KEY)||''; }
+function savePin(p){ localStorage.setItem(PIN_KEY, p); }
+function isPinSet(){ return !!getStoredPin(); }
+
+function openPinModal(onSuccess, mode){
+  pinState = { unlocked:false, entry:'', mode:mode||'verify', newPin:'', onSuccess:onSuccess||null };
+  const hasPin = isPinSet();
+  if(mode==='set'||!hasPin){
+    pinState.mode='set';
+    document.getElementById('pin-modal-title').textContent='Set Attorney PIN';
+    document.getElementById('pin-modal-sub').textContent='Choose a 4-digit PIN to protect financial totals';
+  } else {
+    document.getElementById('pin-modal-title').textContent='Attorney Access';
+    document.getElementById('pin-modal-sub').textContent='Enter your PIN to view financial totals';
+  }
+  document.getElementById('pin-error').textContent='';
+  updatePinDots();
+  document.getElementById('pin-modal').classList.add('open');
+}
+
+function closePinModal(){
+  document.getElementById('pin-modal').classList.remove('open');
+  pinState.entry='';
+  updatePinDots();
+}
+
+function updatePinDots(){
+  for(let i=0;i<4;i++){
+    const d=document.getElementById('pd'+i);
+    if(d) d.className='pin-dot'+(i<pinState.entry.length?' filled':'');
+  }
+}
+
+function pinKey(digit){
+  if(pinState.entry.length>=4) return;
+  pinState.entry+=digit;
+  updatePinDots();
+  document.getElementById('pin-error').textContent='';
+  if(pinState.entry.length===4) setTimeout(processPinEntry,80);
+}
+
+function pinBackspace(){
+  if(pinState.entry.length>0){ pinState.entry=pinState.entry.slice(0,-1); updatePinDots(); }
+}
+
+function processPinEntry(){
+  if(pinState.mode==='verify'){
+    if(pinState.entry===getStoredPin()){
+      pinState.unlocked=true; closePinModal();
+      if(pinState.onSuccess) pinState.onSuccess();
+    } else {
+      document.getElementById('pin-error').textContent='Incorrect PIN. Try again.';
+      for(let i=0;i<4;i++) document.getElementById('pd'+i).classList.add('error');
+      setTimeout(()=>{ pinState.entry=''; updatePinDots(); for(let i=0;i<4;i++) document.getElementById('pd'+i).classList.remove('error'); },700);
+    }
+  } else if(pinState.mode==='set'){
+    pinState.newPin=pinState.entry; pinState.entry=''; pinState.mode='confirm';
+    document.getElementById('pin-modal-title').textContent='Confirm PIN';
+    document.getElementById('pin-modal-sub').textContent='Enter the same PIN again to confirm';
+    updatePinDots();
+  } else if(pinState.mode==='confirm'){
+    if(pinState.entry===pinState.newPin){
+      savePin(pinState.entry); pinState.unlocked=true; closePinModal();
+      showToast('PIN set — financial totals are now protected');
+      renderSettings();
+    } else {
+      document.getElementById('pin-error').textContent='PINs did not match. Start over.';
+      for(let i=0;i<4;i++) document.getElementById('pd'+i).classList.add('error');
+      setTimeout(()=>{
+        pinState.entry=''; pinState.newPin=''; pinState.mode='set';
+        document.getElementById('pin-modal-title').textContent='Set Attorney PIN';
+        document.getElementById('pin-modal-sub').textContent='Choose a 4-digit PIN to protect financial totals';
+        updatePinDots();
+        for(let i=0;i<4;i++) document.getElementById('pd'+i).classList.remove('error');
+      },700);
+    }
+  }
+}
+
+document.addEventListener('keydown',e=>{
+  if(!document.getElementById('pin-modal').classList.contains('open')) return;
+  if(e.key>='0'&&e.key<='9') pinKey(e.key);
+  else if(e.key==='Backspace') pinBackspace();
+  else if(e.key==='Escape') closePinModal();
+});
+
+function pinLockedHtml(innerHtml, lockId){
+  const revealed=pinState.unlocked;
+  return `<div class="pin-locked-wrap" id="plw-${lockId}">
+    <div class="pin-blur${revealed?' revealed':''}" id="pbc-${lockId}">${innerHtml}</div>
+    <div class="pin-shield${revealed?' hidden':''}" id="pbs-${lockId}" onclick="requestPinReveal('${lockId}')">
+      <div class="pin-shield-icon">🔒</div>
+      <div class="pin-shield-label">Tap to view</div>
+    </div>
+  </div>`;
+}
+
+function requestPinReveal(lockId){
+  if(pinState.unlocked){ revealLock(lockId); return; }
+  if(!isPinSet()){ openPinModal(()=>revealLock(lockId),'set'); return; }
+  openPinModal(()=>revealLock(lockId),'verify');
+}
+
+function revealLock(lockId){
+  const bc=document.getElementById('pbc-'+lockId);
+  const bs=document.getElementById('pbs-'+lockId);
+  if(bc) bc.classList.add('revealed');
+  if(bs) bs.classList.add('hidden');
+  const v=state.view;
+  if(v==='dashboard') renderDashboard();
+  else if(v==='clients') renderClientList();
+  else if(v==='finance') renderFinance();
+  else if(v==='client-detail'&&state.currentClientId) renderClientDetail(state.currentClientId);
+}
+
+function confirmRemovePin(){
+  openPinModal(()=>{
+    showConfirm('Remove PIN?','Financial totals will be visible to all users.',()=>{
+      localStorage.removeItem(PIN_KEY);
+      pinState.unlocked=false;
+      showToast('PIN removed');
+      renderSettings();
+    });
+  },'verify');
+}
+
+// ══════════════════════════════════════════════════════════
 //  JSONBIN SYNC
 // ══════════════════════════════════════════════════════════
 let settings = {};
