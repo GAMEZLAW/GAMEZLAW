@@ -789,6 +789,11 @@ const LOCAL_KEY = 'counseltrack_local_v2';
 const PIN_KEY = 'counseltrack_pin';
 const JSONBIN_BASE = 'https://api.jsonbin.io/v3/b';
 
+const TODAY = new Date();
+TODAY.setHours(0,0,0,0);
+function todayStr(){ return TODAY.toISOString().slice(0,10); }
+function uid(){ return Date.now() + Math.floor(Math.random()*9999); }
+
 // ══════════════════════════════════════════════════════════
 //  JSONBIN SYNC
 // ══════════════════════════════════════════════════════════
